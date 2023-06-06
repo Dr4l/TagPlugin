@@ -20,3 +20,9 @@ console_message: "&7{tagger} tagged {tagged}!"
 #global_message: This option sets the message displayed to all other players on the server when a player successfully tags another player.
 #Like the previous options, it supports placeholders for the tagger and tagged players. In this example, the message is "&6{tagger} tagged {tagged}!" which will appear in gold color.
 global_message: "&6{tagger} tagged {tagged}!"
+
+
+tag_cooldown: 30
+
+game_start_message: "&aThe tag game has started!"
+

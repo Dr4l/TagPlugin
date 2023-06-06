@@ -24,6 +24,9 @@ public class TagPlugin extends JavaPlugin implements Listener {
     private List<Player> players;
     private Player itPlayer;
     private FileConfiguration config;
+    private long tagCooldownDuration;
+    private Map<Player, Long> tagCooldowns; // Declare the tagCooldowns variable here
+
 
     @Override
     public void onEnable() {
@@ -31,7 +34,7 @@ public class TagPlugin extends JavaPlugin implements Listener {
         itPlayer = null;
         saveDefaultConfig(); // Save the default config if it doesn't exist
         config = getConfig(); // Load the config
-
+        tagCooldowns = new HashMap<>(); // Initialize the tagCooldowns map
         getServer().getPluginManager().registerEvents(this, this);
 
         leaderboard = new TagLeaderboard();
@@ -57,7 +60,7 @@ public class TagPlugin extends JavaPlugin implements Listener {
             }
 
             startGame();
-            sender.sendMessage(ChatColor.GREEN + "The tag game has started!");
+            sender.sendMessage(ChatColor.GREEN + "Starting the game...");
             return true;
         } else if (command.getName().equalsIgnoreCase("stoptag")) {
             if (itPlayer == null) {
@@ -69,17 +72,26 @@ public class TagPlugin extends JavaPlugin implements Listener {
             sender.sendMessage(ChatColor.GREEN + "The tag game has been stopped.");
             return true;
         } else if (command.getName().equalsIgnoreCase("tagleaderboard")) {
+            if (itPlayer == null) {
+                sender.sendMessage(ChatColor.RED + "There is no game currently running.");
+                return true;
+            }
+
             leaderboard.sendLeaderboard(sender);
             return true;
-        }
-        if (command.getName().equalsIgnoreCase("leaderboard")) {
+        } else if (command.getName().equalsIgnoreCase("leaderboard")) {
+            if (itPlayer == null) {
+                sender.sendMessage(ChatColor.RED + "There is no game currently running.");
+                return true;
+            }
+
             leaderboard.sendTopTaggedPlayers(sender, 5);
             return true;
         }
 
-
         return false;
     }
+
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
@@ -88,6 +100,13 @@ public class TagPlugin extends JavaPlugin implements Listener {
         if (itPlayer != null) {
             players.add(player);
             player.setPlayerListName(player.getName());
+
+            String gameStartMessage = config.getString("game_start_message");
+            if (gameStartMessage != null && !gameStartMessage.isEmpty()) {
+                player.sendMessage(ChatColor.translateAlternateColorCodes('&', gameStartMessage));
+            } else {
+                player.sendMessage(ChatColor.GREEN + "The tag game has started!");
+            }
         }
     }
 
@@ -105,6 +124,11 @@ public class TagPlugin extends JavaPlugin implements Listener {
         }
     }
 
+
+
+
+
+
     @EventHandler
     public void onPlayerDamage(EntityDamageByEntityEvent event) {
         if (event.getEntity() instanceof Player && event.getDamager() instanceof Player) {
@@ -112,7 +136,38 @@ public class TagPlugin extends JavaPlugin implements Listener {
             Player tagger = (Player) event.getDamager();
 
             if (itPlayer == tagger) {
+                if (tagCooldowns.containsKey(tagger)) {
+                    long lastTagTime = tagCooldowns.get(tagger);
+                    long currentTime = System.currentTimeMillis();
+                    config = getConfig(); // Load the config
+                    tagCooldownDuration = config.getLong("tag_cooldown", 30) * 1000; // Read the tag cooldown duration from the config (default: 30 seconds)
+
+                    long cooldownTime = tagCooldownDuration; // Use the configurable cooldown duration
+
+                    if (currentTime - lastTagTime < cooldownTime) {
+                        tagger.sendMessage(ChatColor.RED + "You must wait before tagging another player.");
+                        return;
+                    }
+                }
+
+                if (tagCooldowns.containsKey(tagged)) {
+                    long lastTagTime = tagCooldowns.get(tagged);
+                    long currentTime = System.currentTimeMillis();
+                    config = getConfig(); // Load the config
+                    tagCooldownDuration = config.getLong("tag_cooldown", 30) * 1000; // Read the tag cooldown duration from the config (default: 30 seconds)
+
+                    long cooldownTime = tagCooldownDuration; // Use the configurable cooldown duration
+
+                    if (currentTime - lastTagTime < cooldownTime) {
+                        tagger.sendMessage(ChatColor.RED + "This player cannot be tagged yet. Please wait.");
+                        return;
+                    }
+                }
+
                 tagPlayer(tagged);
+                tagCooldowns.put(tagger, System.currentTimeMillis()); // Update the tagger's cooldown time
+                tagCooldowns.put(tagged, System.currentTimeMillis()); // Update the tagged player's cooldown time
+
                 String tagMessage = config.getString("tag_message");
                 if (tagMessage != null && !tagMessage.isEmpty()) {
                     tagged.sendMessage(ChatColor.translateAlternateColorCodes('&', tagMessage.replace("{tagged}", tagged.getName())));
@@ -153,17 +208,25 @@ public class TagPlugin extends JavaPlugin implements Listener {
         }
     }
 
+
+
     private void startGame() {
         players.clear();
         players.addAll(Bukkit.getOnlinePlayers());
 
         for (Player player : players) {
             player.setPlayerListName(player.getName());
+
+            String gameStartMessage = config.getString("game_start_message");
+            if (gameStartMessage != null && !gameStartMessage.isEmpty()) {
+                player.sendMessage(ChatColor.translateAlternateColorCodes('&', gameStartMessage));
+            } else {
+                player.sendMessage(ChatColor.GREEN + "The tag game has started!");
+            }
         }
 
         selectNewItPlayer();
     }
-
     private void stopGame() {
         for (Player player : players) {
             player.setPlayerListName(player.getName());
@@ -183,6 +246,15 @@ public class TagPlugin extends JavaPlugin implements Listener {
         for (Player player : players) {
             if (player == itPlayer) {
                 player.setPlayerListName(ChatColor.RED + player.getName());
+
+                String tagMessage = config.getString("tag_message");
+                if (tagMessage != null && !tagMessage.isEmpty()) {
+                    player.sendMessage(ChatColor.translateAlternateColorCodes('&', tagMessage.replace("{tagged}", player.getName())));
+                } else {
+                    player.sendMessage(ChatColor.RED + "You got tagged!");
+                }
+            } else {
+                player.setPlayerListName(player.getName());
             }
         }
     }
